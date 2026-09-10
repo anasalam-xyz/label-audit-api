@@ -1,0 +1,55 @@
+import json
+
+from google import genai
+from google.genai import types
+
+from app.core.config import settings
+
+_client = genai.Client(api_key=settings.GEMINI_API_KEY)
+
+EXTRACTION_PROMPT = """You are reading a packaged-commodity label photo for a
+Legal Metrology compliance check in India. Extract these fields if visible:
+manufacturer name & address, net quantity, MRP, month/year of manufacture,
+consumer care details.
+
+Return a JSON array in this exact shape:
+[{"id": "0", "label": "...", "value": "...", "confidence": "high" or "low"}]
+"""
+
+RULES_TEXT = """
+Legal Metrology (Packaged Commodities) Rules, 2011 — key checks:
+- Rule 6(1)(c): manufacturer name and complete address must be present.
+- Rule 6(1)(d): net quantity must be declared in standard units.
+- Rule 6(1)(e): month and year of manufacture must be present.
+- Rule 6(1)(f): MRP must be declared inclusive of all taxes, min. 4mm font.
+- Rule 6(1)(h): consumer care name/address/phone/email must be present.
+"""
+
+
+def extract_fields_from_image(image_bytes: bytes, mime_type: str) -> list[dict]:
+    response = _client.models.generate_content(
+        model=settings.GEMINI_MODEL,
+        contents=[
+            types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+            EXTRACTION_PROMPT,
+        ],
+        config=types.GenerateContentConfig(response_mime_type="application/json"),
+    )
+    return json.loads(response.text)
+
+
+def check_compliance(fields: list[dict]) -> list[dict]:
+    prompt = (
+        f"You are a Legal Metrology compliance checker. Given these rules:\n\n"
+        f"{RULES_TEXT}\n\n"
+        f"Check these extracted label fields and list violations as a JSON array:\n"
+        f'[{{"rule_code": "Rule 6(1)(f)", "explanation": "plain language"}}]\n'
+        f"Return [] if fully compliant.\n\n"
+        f"Fields: {json.dumps(fields)}"
+    )
+    response = _client.models.generate_content(
+        model=settings.GEMINI_MODEL,
+        contents=[prompt],
+        config=types.GenerateContentConfig(response_mime_type="application/json"),
+    )
+    return json.loads(response.text)
