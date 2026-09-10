@@ -14,7 +14,10 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str = "gemini-3.6-flash"
 
     DATABASE_URL: str
-    CORS_ORIGINS: list[str] = ["http://localhost:3000"]
+    CORS_ORIGINS: list[str] = [
+        "http://localhost:3000",
+        "https://label-audit.vercel.app",
+    ]
 
 
 settings = Settings()  # pyright: ignore
