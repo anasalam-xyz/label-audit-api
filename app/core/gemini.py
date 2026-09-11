@@ -1,4 +1,5 @@
 import json
+import time
 
 from google import genai
 from google.genai import types
@@ -6,6 +7,10 @@ from google.genai import types
 from app.core.config import settings
 
 _client = genai.Client(api_key=settings.GEMINI_API_KEY)
+
+MAX_RETRIES = 3
+INITIAL_RETRY_DELAY = 1
+
 
 EXTRACTION_PROMPT = """You are reading a packaged-commodity label photo for a
 Legal Metrology compliance check in India. Extract these fields if visible:
@@ -15,6 +20,7 @@ consumer care details.
 Return a JSON array in this exact shape:
 [{"id": "0", "label": "...", "value": "...", "confidence": "high" or "low"}]
 """
+
 
 RULES_TEXT = """
 Legal Metrology (Packaged Commodities) Rules, 2011 — key checks:
@@ -26,30 +32,70 @@ Legal Metrology (Packaged Commodities) Rules, 2011 — key checks:
 """
 
 
-def extract_fields_from_image(image_bytes: bytes, mime_type: str) -> list[dict]:
-    response = _client.models.generate_content(
+def _generate_with_retry(*args, **kwargs):
+    """
+    Make a Gemini request and retry transient failures such as 503.
+    Uses exponential backoff: 1s -> 2s -> 4s.
+    """
+
+    for attempt in range(MAX_RETRIES):
+        try:
+            return _client.models.generate_content(*args, **kwargs)
+
+        except Exception as exc:
+            # Don't retry forever.
+            if attempt == MAX_RETRIES - 1:
+                raise
+
+            delay = INITIAL_RETRY_DELAY * (2**attempt)
+
+            print(
+                f"Gemini request failed "
+                f"(attempt {attempt + 1}/{MAX_RETRIES}): {exc}. "
+                f"Retrying in {delay}s..."
+            )
+
+            time.sleep(delay)
+
+
+def extract_fields_from_image(
+    image_bytes: bytes,
+    mime_type: str,
+) -> list[dict]:
+    response = _generate_with_retry(
         model=settings.GEMINI_MODEL,
         contents=[
-            types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+            types.Part.from_bytes(
+                data=image_bytes,
+                mime_type=mime_type,
+            ),
             EXTRACTION_PROMPT,
         ],
-        config=types.GenerateContentConfig(response_mime_type="application/json"),
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+        ),
     )
+
     return json.loads(response.text)
 
 
 def check_compliance(fields: list[dict]) -> list[dict]:
     prompt = (
-        f"You are a Legal Metrology compliance checker. Given these rules:\n\n"
+        "You are a Legal Metrology compliance checker. "
+        f"Given these rules:\n\n"
         f"{RULES_TEXT}\n\n"
-        f"Check these extracted label fields and list violations as a JSON array:\n"
-        f'[{{"rule_code": "Rule 6(1)(f)", "explanation": "plain language"}}]\n'
-        f"Return [] if fully compliant.\n\n"
+        "Check these extracted label fields and list violations as a JSON array:\n"
+        '[{"rule_code": "Rule 6(1)(f)", "explanation": "plain language"}]\n'
+        "Return [] if fully compliant.\n\n"
         f"Fields: {json.dumps(fields)}"
     )
-    response = _client.models.generate_content(
+
+    response = _generate_with_retry(
         model=settings.GEMINI_MODEL,
         contents=[prompt],
-        config=types.GenerateContentConfig(response_mime_type="application/json"),
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+        ),
     )
+
     return json.loads(response.text)
