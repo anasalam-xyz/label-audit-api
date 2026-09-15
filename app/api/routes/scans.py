@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, File, UploadFile, HTTPException
 
 from app.api.deps import get_current_user
-from app.core.gemini import extract_fields_from_image, check_compliance
+from app.core.gemini import extract_fields_from_image
+from app.core.compliance import check_compliance
 from app.schemas.scan import (
     ExtractResponse,
     CheckRequest,
@@ -28,9 +29,11 @@ async def extract(
 
 @router.post("/check", response_model=CheckResponse)
 def check(payload: CheckRequest, user: dict = Depends(get_current_user)):
+    # Deterministic — no external call, so failures here are real bugs
+    # (e.g. a malformed field_key), not transient/upstream issues.
     fields_dict = [f.model_dump() for f in payload.fields]
     try:
         raw_violations = check_compliance(fields_dict)
     except Exception:
-        raise HTTPException(502, "Compliance check failed")
+        raise HTTPException(500, "Compliance check failed on the submitted fields")
     return CheckResponse(violations=[Violation(**v) for v in raw_violations])

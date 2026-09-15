@@ -3,6 +3,11 @@ import time
 
 from google import genai
 from google.genai import types
+import json
+import time
+
+from google import genai
+from google.genai import types
 
 from app.core.config import settings
 
@@ -12,23 +17,26 @@ MAX_RETRIES = 3
 INITIAL_RETRY_DELAY = 1
 
 
+# field_key values match app/core/compliance.py's rule keys one-to-one.
+# Always-return-all-5 (with value="" for anything not visible) matters:
+# the compliance engine matches on field_key, not on label text, so a
+# missing key would silently skip that rule's check instead of failing it.
 EXTRACTION_PROMPT = """You are reading a packaged-commodity label photo for a
-Legal Metrology compliance check in India. Extract these fields if visible:
-manufacturer name & address, net quantity, MRP, month/year of manufacture,
-consumer care details.
+Legal Metrology compliance check in India. Extract these 5 fields:
+
+- field_key "manufacturer": manufacturer/packer/importer name & address
+- field_key "net_quantity": net quantity, including its unit
+- field_key "mfg_date": month and year of manufacture
+- field_key "mrp": maximum retail price
+- field_key "consumer_care": consumer care name/address/phone/email
+
+Always return all 5 field_keys, even if a field isn't visible on the
+label — in that case set "value" to "" and "confidence" to "low".
+Never omit a field_key from the array.
 
 Return a JSON array in this exact shape:
-[{"id": "0", "label": "...", "value": "...", "confidence": "high" or "low"}]
-"""
-
-
-RULES_TEXT = """
-Legal Metrology (Packaged Commodities) Rules, 2011 — key checks:
-- Rule 6(1)(c): manufacturer name and complete address must be present.
-- Rule 6(1)(d): net quantity must be declared in standard units.
-- Rule 6(1)(e): month and year of manufacture must be present.
-- Rule 6(1)(f): MRP must be declared inclusive of all taxes, min. 4mm font.
-- Rule 6(1)(h): consumer care name/address/phone/email must be present.
+[{"id": "0", "field_key": "manufacturer", "label": "Manufacturer Details",
+  "value": "...", "confidence": "high" or "low"}]
 """
 
 
@@ -79,23 +87,6 @@ def extract_fields_from_image(
     return json.loads(response.text)
 
 
-def check_compliance(fields: list[dict]) -> list[dict]:
-    prompt = (
-        "You are a Legal Metrology compliance checker. "
-        f"Given these rules:\n\n"
-        f"{RULES_TEXT}\n\n"
-        "Check these extracted label fields and list violations as a JSON array:\n"
-        '[{"rule_code": "Rule 6(1)(f)", "explanation": "plain language"}]\n'
-        "Return [] if fully compliant.\n\n"
-        f"Fields: {json.dumps(fields)}"
-    )
-
-    response = _generate_with_retry(
-        model=settings.GEMINI_MODEL,
-        contents=[prompt],
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-        ),
-    )
-
-    return json.loads(response.text)
+# check_compliance() has moved to app/core/compliance.py — it's now a
+# deterministic Python rule engine, not a second Gemini call. See that
+# file for the rationale (latency, reproducibility, auditability).

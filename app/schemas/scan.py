@@ -4,6 +4,7 @@ from pydantic import BaseModel
 
 class ExtractedField(BaseModel):
     id: str
+    field_key: str  # stable key for rule matching — see core/compliance.py
     label: str
     value: str
     confidence: Literal["high", "low"]
