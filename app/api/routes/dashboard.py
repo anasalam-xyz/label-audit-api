@@ -14,5 +14,6 @@ def get_dashboard(
     db: Session = Depends(get_db),
     user: dict = Depends(require_role("supervisor", "admin")),
 ):
-    stats = dashboard_crud.get_stats(db, region=user.get("region"))
+    # region_id, not region: filtering needs the FK, display uses the name.
+    stats = dashboard_crud.get_stats(db, region_id=user.get("region_id"))
     return DashboardResponse(**stats)

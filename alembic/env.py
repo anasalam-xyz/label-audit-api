@@ -8,6 +8,12 @@ from alembic import context
 from app.core.config import settings
 from app.db.base import Base
 from app.models.user import User
+from app.models.scan import Scan
+from app.models.audit_log import AuditLog
+from app.models.extracted_field import ExtractedField
+from app.models.region import Region
+from app.models.violation import Violation
+
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

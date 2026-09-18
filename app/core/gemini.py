@@ -3,13 +3,9 @@ import time
 
 from google import genai
 from google.genai import types
-import json
-import time
-
-from google import genai
-from google.genai import types
 
 from app.core.config import settings
+from app.core import groq_fallback
 
 _client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
@@ -70,21 +66,32 @@ def extract_fields_from_image(
     image_bytes: bytes,
     mime_type: str,
 ) -> list[dict]:
-    response = _generate_with_retry(
-        model=settings.GEMINI_MODEL,
-        contents=[
-            types.Part.from_bytes(
-                data=image_bytes,
-                mime_type=mime_type,
+    try:
+        response = _generate_with_retry(
+            model=settings.GEMINI_MODEL,
+            contents=[
+                types.Part.from_bytes(
+                    data=image_bytes,
+                    mime_type=mime_type,
+                ),
+                EXTRACTION_PROMPT,
+            ],
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
             ),
-            EXTRACTION_PROMPT,
-        ],
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-        ),
-    )
+        )
+        return json.loads(response.text)
 
-    return json.loads(response.text)
+    except Exception as gemini_exc:
+        # Gemini's free tier gets rate-limited hard under real-world
+        # traffic (it's a popular free model for exactly this kind of
+        # project). Fall back to Groq's free vision model rather than
+        # fail the whole scan outright — only if a key is configured.
+        if not groq_fallback.is_configured():
+            raise
+
+        print(f"Gemini exhausted retries ({gemini_exc}). Falling back to Groq.")
+        return groq_fallback.extract_fields_from_image(image_bytes, mime_type)
 
 
 # check_compliance() has moved to app/core/compliance.py — it's now a

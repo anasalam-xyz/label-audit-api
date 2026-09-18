@@ -47,6 +47,14 @@ def _get(fields_by_key: dict, key: str) -> str:
     return (field.get("value") or "").strip() if field else ""
 
 
+# Severity heuristic: a mandatory declaration missing entirely is a clear-
+# cut legal violation (major); one that's present but malformed/unusual
+# is a formatting issue, not an absence (minor). Static and deterministic —
+# same rationale as the rule engine itself: reproducible, not judgment-based.
+MAJOR = "major"
+MINOR = "minor"
+
+
 def check_compliance(fields: list[dict]) -> list[dict]:
     """
     Check extracted label fields against the 5 implemented LMPC rules.
@@ -63,6 +71,7 @@ def check_compliance(fields: list[dict]) -> list[dict]:
     if not manufacturer:
         violations.append({
             "rule_code": "Rule 6(1)(c)",
+            "severity": MAJOR,
             "explanation": "Manufacturer name and address are not visible on the label.",
         })
 
@@ -70,11 +79,13 @@ def check_compliance(fields: list[dict]) -> list[dict]:
     if not net_quantity:
         violations.append({
             "rule_code": "Rule 6(1)(d)",
+            "severity": MAJOR,
             "explanation": "Net quantity is not declared on the label.",
         })
     elif not _UNIT_PATTERN.search(net_quantity):
         violations.append({
             "rule_code": "Rule 6(1)(d)",
+            "severity": MINOR,
             "explanation": f"Net quantity '{net_quantity}' isn't in a standard unit (g/kg/ml/l).",
         })
 
@@ -82,11 +93,13 @@ def check_compliance(fields: list[dict]) -> list[dict]:
     if not mfg_date:
         violations.append({
             "rule_code": "Rule 6(1)(e)",
+            "severity": MAJOR,
             "explanation": "Month and year of manufacture are not visible on the label.",
         })
     elif not _DATE_PATTERN.search(mfg_date):
         violations.append({
             "rule_code": "Rule 6(1)(e)",
+            "severity": MINOR,
             "explanation": f"Manufacture date '{mfg_date}' isn't in a recognizable date format.",
         })
 
@@ -94,11 +107,13 @@ def check_compliance(fields: list[dict]) -> list[dict]:
     if not mrp:
         violations.append({
             "rule_code": "Rule 6(1)(f)",
+            "severity": MAJOR,
             "explanation": "MRP is not declared on the label.",
         })
     elif not _MRP_PATTERN.search(mrp):
         violations.append({
             "rule_code": "Rule 6(1)(f)",
+            "severity": MINOR,
             "explanation": f"MRP '{mrp}' doesn't look like a valid price.",
         })
     # NOTE: the minimum-4mm-font requirement (Rule 6(1)(f)) can't be
@@ -112,11 +127,13 @@ def check_compliance(fields: list[dict]) -> list[dict]:
     if not consumer_care:
         violations.append({
             "rule_code": "Rule 6(1)(h)",
+            "severity": MAJOR,
             "explanation": "Consumer care details are not visible on the label.",
         })
     elif not _CONTACT_PATTERN.search(consumer_care):
         violations.append({
             "rule_code": "Rule 6(1)(h)",
+            "severity": MINOR,
             "explanation": f"Consumer care info '{consumer_care}' has no recognizable phone number or email.",
         })
 

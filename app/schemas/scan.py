@@ -20,8 +20,15 @@ class CheckRequest(BaseModel):
 
 class Violation(BaseModel):
     rule_code: str
+    severity: Literal["minor", "major"]
     explanation: str
 
 
 class CheckResponse(BaseModel):
     violations: list[Violation]
+
+
+class SaveScanResponse(BaseModel):
+    id: str
+    result: Literal["pass", "violation", "review"]
+    scanned_at: str

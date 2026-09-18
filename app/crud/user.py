@@ -1,42 +1,40 @@
-from app.core.security import hash_password, verify_password
+from sqlalchemy.orm import Session
+from sqlalchemy import select
 
-# Fake user store. `db` is accepted (and ignored) in every function so the
-# signature already matches what a real `db: Session` query needs — the
-# route file below never has to change when this becomes a real lookup.
-_FAKE_USERS = [
-    {
-        "id": "u1",
-        "name": "Rakesh Kumar",
-        "email": "rakesh@labelaudit.gov.in",
-        "hashed_password": hash_password("inspector123"),
-        "role": "inspector",
-        "region": "Ranchi",
-    },
-    {
-        "id": "u2",
-        "name": "Anjali Verma",
-        "email": "anjali@labelaudit.gov.in",
-        "hashed_password": hash_password("inspector123"),
-        "role": "inspector",
-        "region": "Jamshedpur",
-    },
-    {
-        "id": "u3",
-        "name": "Suresh Prasad",
-        "email": "suresh@labelaudit.gov.in",
-        "hashed_password": hash_password("supervisor123"),
-        "role": "supervisor",
-        "region": "Ranchi",
-    },
-]
+from app.core.security import verify_password
+from app.models.user import User
+from app.models.region import Region
 
 
-def authenticate(db, email: str, password: str) -> dict | None:
-    user = next((u for u in _FAKE_USERS if u["email"] == email), None)
+def _to_dict(user: User, region_name: str | None) -> dict:
+    return {
+        "id": user.id,
+        "name": user.name,
+        "email": user.email,
+        "hashed_password": user.hashed_password,
+        "role": user.role.value,
+        "region": region_name,  # display name — matches UserOut's `region` field
+        "region_id": user.region_id,  # internal use — dashboard/history scoping
+    }
+
+
+def _fetch(db: Session, **filters) -> dict | None:
+    query = select(User, Region.name).outerjoin(Region, User.region_id == Region.id)
+    for key, value in filters.items():
+        query = query.where(getattr(User, key) == value)
+    row = db.execute(query).first()
+    if not row:
+        return None
+    user, region_name = row
+    return _to_dict(user, region_name)
+
+
+def authenticate(db: Session, email: str, password: str) -> dict | None:
+    user = _fetch(db, email=email)
     if not user or not verify_password(password, user["hashed_password"]):
         return None
     return user
 
 
-def get_by_id(db, user_id: str) -> dict | None:
-    return next((u for u in _FAKE_USERS if u["id"] == user_id), None)
+def get_by_id(db: Session, user_id: str) -> dict | None:
+    return _fetch(db, id=user_id)
