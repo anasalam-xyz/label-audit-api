@@ -91,7 +91,13 @@ def extract_fields_from_image(
             raise
 
         print(f"Gemini exhausted retries ({gemini_exc}). Falling back to Groq.")
-        return groq_fallback.extract_fields_from_image(image_bytes, mime_type)
+        try:
+            return groq_fallback.extract_fields_from_image(image_bytes, mime_type)
+        except Exception as groq_exc:
+            # Without this, the real Groq failure reason is invisible —
+            # it was propagating straight to scans.py's generic 502.
+            print(f"Groq fallback also failed: {groq_exc}")
+            raise
 
 
 # check_compliance() has moved to app/core/compliance.py — it's now a

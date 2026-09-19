@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     # Optional: leave GROQ_API_KEY unset and the app runs Gemini-only,
     # same as before (a failed Gemini call just raises, as it always did).
     GROQ_API_KEY: str | None = None
-    GROQ_VISION_MODEL: str = "qwen/qwen3.6-27b"
+    GROQ_VISION_MODEL: str = "qwen/qwen3.8-27b"
 
     DATABASE_URL: str
     CORS_ORIGINS: list[str] = [

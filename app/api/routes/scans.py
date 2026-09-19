@@ -29,7 +29,8 @@ async def extract(
     image_bytes = await photo.read()
     try:
         raw_fields = extract_fields_from_image(image_bytes, photo.content_type)
-    except Exception:
+    except Exception as exc:
+        print(f"Extraction failed (Gemini + Groq fallback both exhausted): {exc!r}")
         raise HTTPException(502, "Extraction failed — could not read label")
     return ExtractResponse(fields=[ExtractedField(**f) for f in raw_fields])
 
@@ -74,7 +75,8 @@ async def save(
     image_bytes = await photo.read()
     try:
         photo_url = upload_photo(image_bytes, photo.content_type)
-    except Exception:
+    except Exception as storage_exc:
+        print(f"Supabase upload failed: {storage_exc}")
         raise HTTPException(502, "Photo upload failed")
 
     scan = create_scan_with_details(
